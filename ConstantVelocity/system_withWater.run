@@ -1,0 +1,62 @@
+#/atom 1 hydrogen
+#/atom 2 magnesium
+#/atom 3 oxygen
+#/atom 4 oxygen
+
+processors 16 8 1
+package intel 0 omp 2
+suffix intel
+
+#Type 1, 3: water
+#Type 2, 4: periclase
+
+atom_modify map array
+units real
+boundary p p p
+atom_style full
+
+pair_style lj/cut/coul/long 9.0
+kspace_style pppm 1e-4
+kspace_modify diff ad
+
+bond_style harmonic
+angle_style harmonic
+
+read_restart 01_thermalized_water.restart
+neigh_modify every 1 delay 0 check yes
+
+thermo_style custom step time temp ke pe press pxx pyy pzz pxy pxz pyz spcpu cpuremain
+thermo 100
+
+group groupNvt subtract all frozen_cube frozen_slab
+
+fix frozen_cube frozen_cube move linear 0 0 -0.0001
+velocity pc_cube set 0 0 -0.0001
+
+#fix freeze_bottom frozen_slab setforce 0 0 0
+
+dump dump all atom 5000 trajectory.bin
+fix nvt groupNvt nvt temp 453 453 200 drag 1.0
+
+compute z_lo_upperCube frozen_cube reduce min z
+compute z_hi_lowerSlab frozen_slab reduce max z
+variable z_lo_cube equal c_z_lo_upperCube-29.498
+variable z_hi_slab equal c_z_hi_lowerSlab+12.651
+variable deltaZ equal v_z_lo_cube-v_z_hi_slab
+
+compute forces frozen_cube reduce sum fx fy fz
+
+thermo_style custom step time temp ke pe press pxx pyy pzz pxy pxz pyz v_z_lo_cube v_z_hi_slab v_deltaZ spcpu cpuremain
+
+fix com all ave/time 10 1 10 v_z_lo_cube v_z_hi_slab v_deltaZ file cube.z.txt
+fix force all ave/time 10 1 10 c_forces[*] file forces.txt
+
+variable fx atom fx
+variable fy atom fy
+variable fz atom fz
+variable fsum atom sqrt(fx*fx+fy*fy+fz*fz)
+
+timestep 1.0
+run 450000
+
+write_restart 01_finalWithWater.restart
